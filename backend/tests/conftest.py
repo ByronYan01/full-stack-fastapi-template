@@ -2,7 +2,7 @@ from collections.abc import Generator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import Session, delete
+from sqlmodel import Session, col, delete
 
 from app.core.config import settings
 from app.core.db import engine, init_db
@@ -19,7 +19,9 @@ def db() -> Generator[Session]:
         yield session
         statement = delete(Item)
         session.execute(statement)
-        statement = delete(User)
+        # Keep the bootstrap superuser so the dev login still works between
+        # test runs; only purge non-superuser accounts created by tests.
+        statement = delete(User).where(col(User.is_superuser).is_(False))
         session.execute(statement)
         session.commit()
 
