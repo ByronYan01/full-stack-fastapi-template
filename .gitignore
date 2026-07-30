@@ -5,3 +5,10 @@ node_modules/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+.claude
+.agents
+.playwright-mcp
+openspec
+.spec-workflow
+.serena
