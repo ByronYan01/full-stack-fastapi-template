@@ -115,7 +115,9 @@ export type ValidationError = {
 
 export type ItemsReadItemsData = {
     limit?: number;
+    order?: 'asc' | 'desc';
     skip?: number;
+    title?: (string | null);
 };
 
 export type ItemsReadItemsResponse = (ItemsPublic);

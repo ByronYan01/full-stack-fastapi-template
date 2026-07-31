@@ -1,45 +1,69 @@
 import uuid
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from sqlmodel import col, func, select
 
 from app.api.deps import CurrentUser, SessionDep
-from app.models import Item, ItemCreate, ItemPublic, ItemsPublic, ItemUpdate, Message
+from app.models import (
+    Item,
+    ItemCreate,
+    ItemPublic,
+    ItemsPublic,
+    ItemUpdate,
+    Message,
+    User,
+)
 
 router = APIRouter(prefix="/items", tags=["items"])
 
 
-@router.get("/", response_model=ItemsPublic)
-def read_items(
-    session: SessionDep, current_user: CurrentUser, skip: int = 0, limit: int = 100
+def _apply_item_filters(
+    statement: Any, *, current_user: User, title: str | None
 ) -> Any:
     """
-    Retrieve items.
-    """
+    Apply shared filter clauses (title ILIKE + owner scoping) to the given
+    select statement. Used by both the count and the list queries so that
+    where-conditions cannot drift apart (DRY).
 
-    if current_user.is_superuser:
-        count_statement = select(func.count()).select_from(Item)
-        count = session.exec(count_statement).one()
-        statement = (
-            select(Item).order_by(col(Item.created_at).desc()).offset(skip).limit(limit)
-        )
-        items = session.exec(statement).all()
-    else:
-        count_statement = (
-            select(func.count())
-            .select_from(Item)
-            .where(Item.owner_id == current_user.id)
-        )
-        count = session.exec(count_statement).one()
-        statement = (
-            select(Item)
-            .where(Item.owner_id == current_user.id)
-            .order_by(col(Item.created_at).desc())
-            .offset(skip)
-            .limit(limit)
-        )
-        items = session.exec(statement).all()
+    Typed as ``Any`` because SQLModel's ``select(Item)`` returns a
+    ``SelectOfScalar[Item]`` whose precise generic doesn't survive being
+    threaded through a helper function under mypy; the runtime behaviour is
+    unchanged.
+    """
+    if title:
+        statement = statement.where(col(Item.title).ilike(f"%{title}%"))
+    if not current_user.is_superuser:
+        statement = statement.where(Item.owner_id == current_user.id)
+    return statement
+
+
+@router.get("/", response_model=ItemsPublic)
+def read_items(
+    session: SessionDep,
+    current_user: CurrentUser,
+    title: str | None = Query(default=None, max_length=255),
+    order: Literal["asc", "desc"] = Query(default="desc"),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=10, ge=1, le=100),
+) -> Any:
+    """
+    Retrieve items with optional title search, ordering and pagination.
+    """
+    base = _apply_item_filters(
+        select(Item), current_user=current_user, title=title
+    )
+
+    count_statement = select(func.count()).select_from(base.subquery())
+    count = session.scalar(count_statement) or 0
+
+    order_clause = (
+        col(Item.created_at).desc()
+        if order == "desc"
+        else col(Item.created_at).asc()
+    )
+    rows_statement = base.order_by(order_clause).offset(skip).limit(limit)
+    items = session.exec(rows_statement).all()
 
     items_public = [ItemPublic.model_validate(item) for item in items]
     return ItemsPublic(data=items_public, count=count)

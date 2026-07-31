@@ -8,8 +8,10 @@ import type { ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, I
 export class ItemsService {
     /**
      * Read Items
-     * Retrieve items.
+     * Retrieve items with optional title search, ordering and pagination.
      * @param data The data for the request.
+     * @param data.title
+     * @param data.order
      * @param data.skip
      * @param data.limit
      * @returns ItemsPublic Successful Response
@@ -20,6 +22,8 @@ export class ItemsService {
             method: 'GET',
             url: '/api/v1/items/',
             query: {
+                title: data.title,
+                order: data.order,
                 skip: data.skip,
                 limit: data.limit
             },
